@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cloak — talk, then vanish</title>
+<meta name="theme-color" content="#0A0A0F">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --void:#0A0A0F;
+    --panel:#131319;
+    --panel-2:#1B1B24;
+    --line:#2A2A36;
+    --ink:#E9E7EE;
+    --ink-dim:#8B8A9A;
+    --signal:#E0A458;
+    --signal-dim:#7A5A2E;
+    --mist:#5B5B78;
+    --danger:#C4574B;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background:radial-gradient(ellipse at top, #14141C 0%, var(--void) 60%);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    min-height:100dvh;
+    display:flex; flex-direction:column;
+    overflow-x:hidden;
+  }
+  .fog{
+    position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.5;
+    background:
+      radial-gradient(600px 300px at 15% -5%, rgba(224,164,88,.06), transparent 60%),
+      radial-gradient(500px 260px at 90% 10%, rgba(91,91,120,.10), transparent 60%);
+  }
+  .grain{
+    position:fixed; inset:0; pointer-events:none; z-index:0; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  #particles{ position:fixed; inset:0; pointer-events:none; z-index:0; }
+  .screen{ position:relative; z-index:1; flex:1; display:flex; flex-direction:column; }
+  .hidden{ display:none !important; }
+
+  /* ---------- Shared ---------- */
+  .center-screen{ align-items:center; justify-content:center; padding:32px 20px; text-align:center; }
+  .brand{ display:flex; flex-direction:column; align-items:center; gap:6px; margin-bottom:36px; }
+  .brand-mark{
+    width:48px; height:48px; border-radius:50%;
+    background:conic-gradient(from 210deg, var(--signal), var(--mist), transparent 70%);
+    box-shadow:0 0 40px rgba(224,164,88,.25);
+    animation:drift 8s ease-in-out infinite;
+  }
+  @keyframes drift{ 0%,100%{transform:scale(1) rotate(0deg);} 50%{transform:scale(1.08) rotate(8deg);} }
+  h1.wordmark{ font-family:'Fraunces',serif; font-weight:600; font-size:1.9rem; letter-spacing:.01em; }
+  .tagline{ color:var(--ink-dim); font-size:.88rem; margin-top:2px; letter-spacing:.02em; }
+
+  .card{
+    width:100%; max-width:380px;
+    background:linear-gradient(180deg, var(--panel), var(--panel-2));
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:26px;
+    box-shadow:0 20px 60px rgba(0,0,0,.4);
+  }
+  label{ display:block; text-align:left; font-size:.78rem; color:var(--ink-dim); margin-bottom:7px; letter-spacing:.03em; text-transform:uppercase; }
+  input[type=text]{
+    width:100%; background:#0E0E14; border:1px solid var(--line); color:var(--ink);
+    border-radius:10px; padding:13px 14px; font-size:1rem; font-family:'Inter',sans-serif;
+    margin-bottom:16px; outline:none; transition:border-color .15s;
+  }
+  input[type=text]:focus{ border-color:var(--signal-dim); }
+  input.code-input{ font-family:'JetBrains Mono',monospace; letter-spacing:.35em; text-transform:uppercase; text-align:center; font-size:1.15rem; }
+
+  .btn{
+    width:100%; padding:14px; border-radius:10px; border:none; cursor:pointer;
+    font-family:'Inter',sans-serif; font-weight:600; font-size:.95rem; letter-spacing:.01em;
+    transition:transform .1s, opacity .15s;
+  }
+  .btn:active{ transform:scale(.98); }
+  .btn-primary{ background:var(--signal); color:#1A1408; }
+  .btn-primary:hover{ opacity:.92; }
+  .btn-primary:disabled{ opacity:.5; cursor:default; }
+  .btn-ghost{ background:transparent; color:var(--ink-dim); border:1px solid var(--line); }
+  .btn-ghost:hover{ color:var(--ink); border-color:var(--mist); }
+  .btn-danger{ background:transparent; color:var(--danger); border:1px solid rgba(196,87,75,.4); }
+
+  .link-btn{
+    background:none; border:none; color:var(--signal); font-family:'Inter',sans-serif;
+    font-size:1.05rem; font-weight:600; cursor:pointer; padding:14px; letter-spacing:.01em;
+  }
+  .link-btn:hover{ opacity:.85; }
+
+  .divider{ display:flex; align-items:center; gap:12px; margin:20px 0; color:var(--ink-dim); font-size:.75rem; letter-spacing:.08em; }
+  .divider::before,.divider::after{ content:''; flex:1; height:1px; background:var(--line); }
+
+  .error-text{ color:var(--danger); font-size:.82rem; margin-top:-8px; margin-bottom:14px; text-align:left; min-height:1em; }
+  .back-row{ width:100%; max-width:380px; margin-bottom:14px; }
+  .back-btn{ background:none; border:none; color:var(--ink-dim); font-size:.88rem; cursor:pointer; font-family:'Inter',sans-serif; }
+  .back-btn:hover{ color:var(--ink); }
+
+  /* Member count picker */
+  .limit-picker{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:20px; }
+  .limit-pill{
+    flex:1; min-width:38px; padding:10px 0; text-align:center; border-radius:9px;
+    border:1px solid var(--line); background:#0E0E14; color:var(--ink-dim); cursor:pointer;
+    font-family:'JetBrains Mono',monospace; font-size:.9rem; transition:all .12s;
+  }
+  .limit-pill.active{ background:var(--signal); color:#1A1408; border-color:var(--signal); font-weight:700; }
+
+  /* Room preview card (join flow) */
+  .preview-box{
+    background:#0E0E14; border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:18px; text-align:left;
+  }
+  .preview-box .room-owner{ font-family:'Fraunces',serif; font-size:1.1rem; margin-bottom:4px; }
+  .preview-box .room-meta{ color:var(--ink-dim); font-size:.82rem; }
+
+  .loading-dot{ display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--signal); animation:pulse 1s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:.3;} 50%{opacity:1;} }
+
+  /* ---------- Chat ---------- */
+  #chat{ display:flex; flex-direction:column; height:100dvh; }
+  .chat-header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px; border-bottom:1px solid var(--line);
+    background:rgba(19,19,25,.7); backdrop-filter:blur(10px);
+  }
+  .room-info{ display:flex; align-items:center; gap:10px; }
+  .room-code-pill{
+    font-family:'JetBrains Mono',monospace; letter-spacing:.15em; font-size:.85rem;
+    background:#0E0E14; border:1px solid var(--line); padding:6px 12px; border-radius:20px; color:var(--signal);
+  }
+  .member-count{ font-size:.78rem; color:var(--ink-dim); }
+  .header-actions{ display:flex; gap:8px; }
+  .icon-btn{
+    background:transparent; border:1px solid var(--line); color:var(--ink-dim);
+    border-radius:8px; padding:7px 10px; font-size:.75rem; cursor:pointer; font-family:'Inter',sans-serif;
+  }
+  .icon-btn:hover{ color:var(--ink); border-color:var(--mist); }
+
+  .messages{ flex:1; overflow-y:auto; padding:20px 16px; display:flex; flex-direction:column; gap:10px; }
+  .empty-state{ margin:auto; text-align:center; color:var(--ink-dim); font-size:.88rem; opacity:.7; }
+  .empty-state .brand-mark{ width:34px; height:34px; margin:0 auto 12px; }
+  .msg{ max-width:78%; padding:10px 14px; border-radius:14px; font-size:.92rem; line-height:1.4; word-wrap:break-word; animation:rise .25s ease; cursor:pointer; }
+  @keyframes rise{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+  .msg.mine{ align-self:flex-end; background:linear-gradient(135deg, var(--signal-dim), #4A3A1E); color:#F4E9D8; border-bottom-right-radius:4px; box-shadow:0 4px 14px rgba(224,164,88,.12), 0 1px 2px rgba(0,0,0,.3); }
+  .msg.theirs{ align-self:flex-start; background:var(--panel-2); border:1px solid var(--line); border-bottom-left-radius:4px; box-shadow:0 4px 14px rgba(0,0,0,.25); }
+  .msg .sender{ font-size:.68rem; color:var(--ink-dim); margin-bottom:3px; letter-spacing:.03em; }
+  .msg .msg-time{ display:block; font-size:.65rem; opacity:.55; margin-top:3px; max-height:0; overflow:hidden; transition:max-height .18s ease; }
+  .msg.time-shown .msg-time{ max-height:16px; }
+  .msg.system{ align-self:center; color:var(--mist); font-size:.78rem; background:rgba(91,91,120,.08); padding:6px 14px; border-radius:20px; cursor:default; }
+  .typing-indicator{ align-self:flex-start; color:var(--ink-dim); font-size:.8rem; padding:2px 14px; font-style:italic; opacity:0; transition:opacity .2s; }
+  .typing-indicator.show{ opacity:1; }
+
+  .composer{ display:flex; gap:10px; padding:14px 16px; border-top:1px solid var(--line); background:rgba(19,19,25,.7); }
+  .composer input{ flex:1; background:#0E0E14; border:1px solid var(--line); color:var(--ink); border-radius:24px; padding:12px 18px; font-size:.95rem; outline:none; }
+  .composer input:focus{ border-color:var(--signal-dim); }
+  .send-btn{ background:var(--signal); border:none; color:#1A1408; border-radius:50%; width:44px; height:44px; font-size:1.1rem; cursor:pointer; flex-shrink:0; }
+
+  /* ---------- Modal ---------- */
+  .modal-overlay{ position:fixed; inset:0; background:rgba(6,6,9,.7); backdrop-filter:blur(4px); display:flex; align-items:center; justify-content:center; z-index:50; padding:20px; }
+  .modal{ background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:24px; max-width:340px; width:100%; text-align:center; }
+  .modal h3{ font-family:'Fraunces',serif; font-weight:600; margin-bottom:10px; }
+  .modal p{ color:var(--ink-dim); font-size:.88rem; margin-bottom:20px; line-height:1.5; }
+  .modal-actions{ display:flex; gap:10px; }
+
+  .dissolve .messages .msg, .dissolve .messages .typing-indicator{
+    animation:puffAway .7s ease forwards;
+  }
+  @keyframes puffAway{
+    to{ opacity:0; filter:blur(10px); transform:translateY(-14px) scale(.85); }
+  }
+  .dissolve .chat-header, .dissolve .composer{ animation:dissolveOut .6s ease forwards; }
+  @keyframes dissolveOut{ to{ opacity:0; filter:blur(6px); transform:scale(.96); } }
+
+  .qr-box{ background:#fff; border-radius:12px; padding:14px; display:inline-block; margin-bottom:16px; }
+  .qr-box img{ display:block; width:180px; height:180px; }
+
+  ::-webkit-scrollbar{ width:6px; }
+  ::-webkit-scrollbar-thumb{ background:var(--line); border-radius:3px; }
+</style>
+</head>
+<body>
+<div class="fog"></div>
+<div class="grain"></div>
+<canvas id="particles"></canvas>
+
+<!-- RESUME LOADER -->
+<div id="resuming" class="screen center-screen hidden">
+  <div class="brand-mark"></div>
+  <p class="tagline" style="margin-top:16px;">Reconnecting<span class="loading-dot" style="margin-left:6px;"></span></p>
+</div>
+
+<!-- PAGE 1: LANDING / CREATE -->
+<div id="landing" class="screen center-screen">
+  <div class="brand">
+    <div class="brand-mark"></div>
+    <h1 class="wordmark">Cloak</h1>
+    <p class="tagline">Talk freely. Nothing stays behind.</p>
+  </div>
+
+  <div class="card">
+    <div id="create-step-1">
+      <label for="name-input">Your name</label>
+      <input type="text" id="name-input" placeholder="What should they call you?" maxlength="24">
+      <p class="error-text" id="landing-error"></p>
+      <button class="btn btn-primary" id="btn-show-create-options">Create Room</button>
+      <div class="divider">OR</div>
+      <button class="link-btn" id="btn-goto-join" style="width:100%;">Join Chat With Code</button>
+    </div>
+
+    <div id="create-step-2" class="hidden">
+      <label>How many people can join? (2–8)</label>
+      <div class="limit-picker" id="limit-picker"></div>
+      <button class="btn btn-primary" id="btn-confirm-create">Start Chat</button>
+      <button class="btn btn-ghost" id="btn-back-to-step1" style="margin-top:10px;">Back</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 2: JOIN WITH CODE -->
+<div id="join-page" class="screen center-screen hidden">
+  <div class="back-row"><button class="back-btn" id="btn-back-to-landing">&larr; Back</button></div>
+  <div class="brand">
+    <div class="brand-mark" style="width:36px;height:36px;"></div>
+    <h1 class="wordmark" style="font-size:1.4rem;">Join a chat</h1>
+  </div>
+
+  <div class="card">
+    <div id="join-step-1">
+      <label for="join-code-input">Room code</label>
+      <input type="text" id="join-code-input" class="code-input" placeholder="XXXXXX" maxlength="6">
+      <label for="join-name-input">Your name</label>
+      <input type="text" id="join-name-input" placeholder="What should they call you?" maxlength="24">
+      <p class="error-text" id="join-error"></p>
+      <button class="btn btn-primary" id="btn-find-room">Find Room</button>
+    </div>
+
+    <div id="join-step-2" class="hidden">
+      <div class="preview-box">
+        <div class="room-owner" id="preview-owner">—</div>
+        <div class="room-meta" id="preview-meta">—</div>
+      </div>
+      <button class="btn btn-primary" id="btn-join-room-confirm">Join Room</button>
+      <button class="btn btn-ghost" id="btn-back-to-join1" style="margin-top:10px;">Try a different code</button>
+    </div>
+  </div>
+</div>
+
+<!-- CHAT -->
+<div id="chat" class="screen hidden">
+  <div class="chat-header">
+    <div class="room-info">
+      <span class="room-code-pill" id="room-code-display">------</span>
+      <span class="member-count" id="member-count-display">1 / 2</span>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="btn-copy-code">Copy code</button>
+      <button class="icon-btn" id="btn-show-qr">QR</button>
+      <button class="icon-btn" id="btn-add-people">+ Add</button>
+      <button class="icon-btn" id="btn-leave" style="color:var(--danger); border-color:rgba(196,87,75,.4);">Close</button>
+    </div>
+  </div>
+  <div class="messages" id="messages"></div>
+  <div class="typing-indicator" id="typing-indicator"></div>
+  <div class="composer">
+    <input type="text" id="message-input" placeholder="Say something..." maxlength="1000">
+    <button class="send-btn" id="btn-send">➤</button>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://qgidumkwpdomfppgcati.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnaWR1bWt3cGRvbWZwcGdjYXRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyNTU1NjksImV4cCI6MjA5OTgzMTU2OX0.BEw1ztFFZwkjo6Z5epjT05v8RT77u7oPE-GOXOsespE";
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+/* ---------- Ambient particles ---------- */
+(function initParticles(){
+  const canvas = document.getElementById('particles');
+  const ctx = canvas.getContext('2d');
+  let w, h, particles;
+  function resize(){
+    w = canvas.width = window.innerWidth;
+    h = canvas.height = window.innerHeight;
+  }
+  function makeParticles(){
+    const count = Math.min(28, Math.floor(w / 40));
+    particles = Array.from({ length: count }, () => ({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      r: Math.random() * 1.6 + 0.4,
+      vy: -(Math.random() * 0.25 + 0.05),
+      vx: (Math.random() - 0.5) * 0.15,
+      alpha: Math.random() * 0.35 + 0.08,
+      hue: Math.random() > 0.6 ? '224,164,88' : '91,91,120'
+    }));
+  }
+  function tick(){
+    ctx.clearRect(0, 0, w, h);
+    for(const p of particles){
+      p.x += p.vx; p.y += p.vy;
+      if(p.y < -10){ p.y = h + 10; p.x = Math.random() * w; }
+      if(p.x < -10) p.x = w + 10;
+      if(p.x > w + 10) p.x = -10;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(${p.hue},${p.alpha})`;
+      ctx.fill();
+    }
+    requestAnimationFrame(tick);
+  }
+  resize(); makeParticles();
+  window.addEventListener('resize', () => { resize(); makeParticles(); });
+  tick();
+})();
+
+function getSessionId(){
+  let id = localStorage.getItem('cloak_session_id');
+  if(!id){ id = crypto.randomUUID(); localStorage.setItem('cloak_session_id', id); }
+  return id;
+}
+const sessionId = getSessionId();
+let displayName = localStorage.getItem('cloak_name') || '';
+let room = null;
+let msgChannel = null, roomChannel = null, memberChannel = null, pollTimer = null;
+const seenMessageIds = new Set();
+let selectedLimit = 2;
+let previewRoomId = null;
+
+const $ = (id) => document.getElementById(id);
+const screens = { resuming: $('resuming'), landing: $('landing'), join: $('join-page'), chat: $('chat') };
+function showScreen(name){
+  Object.values(screens).forEach(s => s.classList.add('hidden'));
+  screens[name].classList.remove('hidden');
+}
+
+const messagesEl = $('messages'), messageInput = $('message-input');
+$('name-input').value = displayName;
+
+function escapeHtml(s){
+  const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+}
+
+function formatTime(iso){
+  const d = iso ? new Date(iso) : new Date();
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function updateEmptyState(){
+  const hasReal = messagesEl.querySelector('.msg:not(.system)');
+  let placeholder = messagesEl.querySelector('.empty-state');
+  if(!hasReal){
+    if(!placeholder){
+      placeholder = document.createElement('div');
+      placeholder.className = 'empty-state';
+      placeholder.innerHTML = `<div class="brand-mark"></div>Say something to start the conversation.`;
+      messagesEl.appendChild(placeholder);
+    }
+  } else if(placeholder){
+    placeholder.remove();
+  }
+}
+
+function addMessageEl(sender, content, mine, isSystem=false, id=null, createdAt=null, vibrate=false){
+  if(id){
+    if(seenMessageIds.has(id)) return;
+    seenMessageIds.add(id);
+  }
+  const div = document.createElement('div');
+  div.className = isSystem ? 'msg system' : 'msg ' + (mine ? 'mine' : 'theirs');
+  if(isSystem){
+    div.textContent = content;
+  } else {
+    div.innerHTML = (mine ? '' : `<div class="sender">${escapeHtml(sender)}</div>`)
+      + escapeHtml(content)
+      + `<span class="msg-time">${formatTime(createdAt)}</span>`;
+    div.addEventListener('click', () => div.classList.toggle('time-shown'));
+  }
+  messagesEl.appendChild(div);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  updateEmptyState();
+  if(vibrate && navigator.vibrate) navigator.vibrate(12);
+}
+
+function updateHeader(){
+  $('room-code-display').textContent = room.code;
+  $('member-count-display').textContent = `${room.member_count} / ${room.max_members}`;
+}
+
+let typingTimeout = null;
+function showTyping(name){
+  const el = $('typing-indicator');
+  el.textContent = `${name} is typing…`;
+  el.classList.add('show');
+  clearTimeout(typingTimeout);
+  typingTimeout = setTimeout(hideTyping, 2500);
+}
+function hideTyping(){
+  $('typing-indicator').classList.remove('show');
+}
+
+function saveActiveRoom(){
+  localStorage.setItem('cloak_active_room', JSON.stringify({ id: room.id, code: room.code }));
+}
+function clearActiveRoom(){
+  localStorage.removeItem('cloak_active_room');
+}
+
+async function loadMessageHistory(){
+  const { data } = await sb.from('messages').select('*').eq('room_id', room.id).order('created_at', { ascending: true });
+  if(data){
+    for(const m of data){
+      addMessageEl(m.sender_name, m.content, m.session_id === sessionId, false, m.id, m.created_at);
+    }
+  }
+}
+
+async function enterRoom(r, systemNote, skipHistory){
+  room = r;
+  saveActiveRoom();
+  showScreen('chat');
+  messagesEl.innerHTML = '';
+  seenMessageIds.clear();
+  updateHeader();
+  if(systemNote) addMessageEl('', systemNote, false, true);
+  updateEmptyState();
+  if(!skipHistory) loadMessageHistory(); // don't block screen render on this
+
+  msgChannel = sb.channel('room-messages-' + room.id)
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'messages', filter:`room_id=eq.${room.id}` }, (payload) => {
+      const m = payload.new;
+      if(m.session_id === sessionId) return;
+      hideTyping();
+      addMessageEl(m.sender_name, m.content, false, false, m.id, m.created_at, true);
+    })
+    .on('broadcast', { event: 'typing' }, (payload) => {
+      if(payload.payload.session_id === sessionId) return;
+      showTyping(payload.payload.name);
+    })
+    .subscribe();
+
+  roomChannel = sb.channel('room-state-' + room.id)
+    .on('postgres_changes', { event:'DELETE', schema:'public', table:'rooms', filter:`id=eq.${room.id}` }, () => handleRoomClosed())
+    .on('postgres_changes', { event:'UPDATE', schema:'public', table:'rooms', filter:`id=eq.${room.id}` }, (payload) => {
+      room.max_members = payload.new.max_members;
+      room.member_count = payload.new.member_count;
+      updateHeader();
+    })
+    .subscribe();
+
+  memberChannel = sb.channel('room-members-' + room.id)
+    .on('postgres_changes', { event:'INSERT', schema:'public', table:'room_members', filter:`room_id=eq.${room.id}` }, (payload) => {
+      if(payload.new.session_id !== sessionId){
+        addMessageEl('', `${payload.new.display_name} joined the room`, false, true);
+      }
+    })
+    .subscribe();
+
+  pollTimer = setInterval(async () => {
+    if(!room) return;
+    const { data, error } = await sb.from('messages').select('*').eq('room_id', room.id).order('created_at', { ascending: true });
+    if(error || !data) return;
+    for(const m of data){
+      addMessageEl(m.sender_name, m.content, m.session_id === sessionId, false, m.id, m.created_at);
+    }
+    const { data: roomCheck } = await sb.rpc('resume_room', { p_room_id: room.id, p_session_id: sessionId });
+    if(!roomCheck){ handleRoomClosed(); }
+  }, 3000);
+}
+
+function handleRoomClosed(){
+  if(!room) return;
+  clearActiveRoom();
+  $('chat').classList.add('dissolve');
+  setTimeout(() => {
+    $('chat').classList.remove('dissolve');
+    cleanupChannels();
+    room = null;
+    resetToLanding();
+  }, 750);
+}
+
+function cleanupChannels(){
+  if(msgChannel) sb.removeChannel(msgChannel);
+  if(roomChannel) sb.removeChannel(roomChannel);
+  if(memberChannel) sb.removeChannel(memberChannel);
+  if(pollTimer) clearInterval(pollTimer);
+  msgChannel = roomChannel = memberChannel = pollTimer = null;
+  seenMessageIds.clear();
+  hideTyping();
+}
+
+function resetToLanding(){
+  showScreen('landing');
+  $('create-step-1').classList.remove('hidden');
+  $('create-step-2').classList.add('hidden');
+  $('join-step-1').classList.remove('hidden');
+  $('join-step-2').classList.add('hidden');
+}
+
+/* ---------- Page 1: Create flow ---------- */
+function buildLimitPicker(){
+  const wrap = $('limit-picker');
+  wrap.innerHTML = '';
+  for(let n = 2; n <= 8; n++){
+    const pill = document.createElement('div');
+    pill.className = 'limit-pill' + (n === selectedLimit ? ' active' : '');
+    pill.textContent = n;
+    pill.addEventListener('click', () => {
+      selectedLimit = n;
+      [...wrap.children].forEach(c => c.classList.remove('active'));
+      pill.classList.add('active');
+    });
+    wrap.appendChild(pill);
+  }
+}
+buildLimitPicker();
+
+$('btn-show-create-options').addEventListener('click', () => {
+  displayName = $('name-input').value.trim();
+  $('landing-error').textContent = '';
+  if(!displayName){ $('landing-error').textContent = 'Enter a name first.'; return; }
+  localStorage.setItem('cloak_name', displayName);
+  $('create-step-1').classList.add('hidden');
+  $('create-step-2').classList.remove('hidden');
+});
+
+$('btn-back-to-step1').addEventListener('click', () => {
+  $('create-step-2').classList.add('hidden');
+  $('create-step-1').classList.remove('hidden');
+});
+
+$('btn-confirm-create').addEventListener('click', async () => {
+  const btn = $('btn-confirm-create');
+  btn.disabled = true; btn.textContent = 'Opening...';
+  const { data, error } = await sb.rpc('create_room', { p_creator_name: displayName, p_session_id: sessionId, p_max_members: selectedLimit });
+  btn.disabled = false; btn.textContent = 'Start Chat';
+  if(error){ $('landing-error').textContent = 'Could not create a room. Try again.'; $('create-step-2').classList.add('hidden'); $('create-step-1').classList.remove('hidden'); return; }
+  enterRoom(data, `Conversation started. Your code is ${data.code}.`, true);
+});
+
+/* ---------- Page 2: Join flow ---------- */
+$('btn-goto-join').addEventListener('click', () => {
+  $('join-name-input').value = $('name-input').value.trim();
+  showScreen('join');
+});
+$('btn-back-to-landing').addEventListener('click', resetToLanding);
+$('btn-back-to-join1').addEventListener('click', () => {
+  $('join-step-2').classList.add('hidden');
+  $('join-step-1').classList.remove('hidden');
+});
+
+$('btn-find-room').addEventListener('click', async () => {
+  const code = $('join-code-input').value.trim().toUpperCase();
+  const name = $('join-name-input').value.trim();
+  $('join-error').textContent = '';
+  if(!name){ $('join-error').textContent = 'Enter a name first.'; return; }
+  if(code.length !== 6){ $('join-error').textContent = 'Codes are 6 characters.'; return; }
+  const btn = $('btn-find-room');
+  btn.disabled = true; btn.textContent = 'Looking...';
+  const { data, error } = await sb.rpc('preview_room', { p_code: code });
+  btn.disabled = false; btn.textContent = 'Find Room';
+  if(error || !data || data.length === 0){ $('join-error').textContent = 'No conversation found with that code.'; return; }
+  const info = data[0];
+  previewRoomId = info.room_id;
+  $('preview-owner').textContent = `${info.creator_name}'s room`;
+  $('preview-meta').textContent = `${info.member_count} / ${info.max_members} people currently in this chat`;
+  $('btn-join-room-confirm').disabled = info.member_count >= info.max_members;
+  $('btn-join-room-confirm').textContent = info.member_count >= info.max_members ? 'Room is full' : 'Join Room';
+  $('join-step-1').classList.add('hidden');
+  $('join-step-2').classList.remove('hidden');
+});
+
+$('btn-join-room-confirm').addEventListener('click', async () => {
+  const name = $('join-name-input').value.trim();
+  localStorage.setItem('cloak_name', name);
+  displayName = name;
+  const code = $('join-code-input').value.trim().toUpperCase();
+  const btn = $('btn-join-room-confirm');
+  btn.disabled = true; btn.textContent = 'Joining...';
+  const { data, error } = await sb.rpc('join_room', { p_code: code, p_display_name: name, p_session_id: sessionId });
+  btn.disabled = false; btn.textContent = 'Join Room';
+  if(error){
+    $('join-error').textContent = error.message.includes('ROOM_FULL') ? 'That room just became full.' : 'Could not join that room.';
+    $('join-step-2').classList.add('hidden');
+    $('join-step-1').classList.remove('hidden');
+    return;
+  }
+  enterRoom(data, `You joined the conversation. Share code ${data.code} to invite someone.`);
+});
+
+/* ---------- Chat actions ---------- */
+async function sendMessage(){
+  const text = messageInput.value.trim();
+  if(!text || !room) return;
+  messageInput.value = '';
+  const now = new Date().toISOString();
+  addMessageEl(displayName, text, true, false, null, now);
+  messageInput.focus();
+  const { data, error } = await sb.from('messages')
+    .insert({ room_id: room.id, session_id: sessionId, sender_name: displayName, content: text })
+    .select().single();
+  if(error) addMessageEl('', 'Message failed to send.', false, true);
+  else if(data) seenMessageIds.add(data.id);
+}
+$('btn-send').addEventListener('click', sendMessage);
+// Prevent the button tap from blurring the input first (which dismisses the mobile keyboard).
+// IMPORTANT: only mousedown — preventDefault on touchstart would suppress the click event entirely.
+$('btn-send').addEventListener('mousedown', (e) => e.preventDefault());
+messageInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') sendMessage(); });
+
+let lastTypingSent = 0;
+messageInput.addEventListener('input', () => {
+  if(!room || !msgChannel) return;
+  const now = Date.now();
+  if(now - lastTypingSent < 1500) return;
+  lastTypingSent = now;
+  msgChannel.send({ type: 'broadcast', event: 'typing', payload: { name: displayName, session_id: sessionId } });
+});
+
+$('btn-copy-code').addEventListener('click', () => {
+  navigator.clipboard.writeText(room.code);
+  $('btn-copy-code').textContent = 'Copied!';
+  $('btn-copy-code').style.borderColor = 'var(--signal)';
+  $('btn-copy-code').style.color = 'var(--signal)';
+  if(navigator.vibrate) navigator.vibrate(10);
+  setTimeout(() => {
+    $('btn-copy-code').textContent = 'Copy code';
+    $('btn-copy-code').style.borderColor = '';
+    $('btn-copy-code').style.color = '';
+  }, 1200);
+});
+
+$('btn-show-qr').addEventListener('click', () => {
+  const joinUrl = `${location.origin}${location.pathname}?code=${room.code}`;
+  const qrSrc = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(joinUrl)}`;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Scan to join</h3>
+      <div class="qr-box"><img src="${qrSrc}" alt="QR code for room ${room.code}"></div>
+      <p>Or share the code: <strong style="color:var(--signal); font-family:'JetBrains Mono',monospace;">${room.code}</strong></p>
+      <div class="modal-actions"><button class="btn btn-ghost" id="modal-cancel">Close</button></div>
+    </div>`;
+  document.body.appendChild(overlay);
+  $('modal-cancel').onclick = () => overlay.remove();
+});
+
+$('btn-add-people').addEventListener('click', () => {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  const options = [];
+  for(let n = room.max_members + 1; n <= 8; n++) options.push(n);
+  if(options.length === 0){
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>Already at the limit</h3>
+        <p>This room is already set to the maximum of 8 people.</p>
+        <div class="modal-actions"><button class="btn btn-ghost" id="modal-cancel">Close</button></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    $('modal-cancel').onclick = () => overlay.remove();
+    return;
+  }
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Raise the limit</h3>
+      <p>Currently up to ${room.max_members} people. Choose a new total.</p>
+      <div class="limit-picker" id="modal-limit-picker" style="margin-bottom:20px;"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="modal-confirm">Update</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  let newLimit = options[0];
+  const picker = overlay.querySelector('#modal-limit-picker');
+  options.forEach((n, i) => {
+    const pill = document.createElement('div');
+    pill.className = 'limit-pill' + (i === 0 ? ' active' : '');
+    pill.textContent = n;
+    pill.addEventListener('click', () => {
+      newLimit = n;
+      [...picker.children].forEach(c => c.classList.remove('active'));
+      pill.classList.add('active');
+    });
+    picker.appendChild(pill);
+  });
+  $('modal-cancel').onclick = () => overlay.remove();
+  $('modal-confirm').onclick = async () => {
+    const { data, error } = await sb.rpc('update_member_limit', { p_room_id: room.id, p_new_limit: newLimit });
+    if(!error){ room = data; updateHeader(); saveActiveRoom(); }
+    overlay.remove();
+  };
+});
+
+$('btn-leave').addEventListener('click', () => {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h3>Close this conversation?</h3>
+      <p>Everything — every message, every trace — disappears permanently for everyone. This can't be undone.</p>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" id="modal-cancel">Stay</button>
+        <button class="btn btn-danger" id="modal-confirm">Erase it</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  $('modal-cancel').onclick = () => overlay.remove();
+  $('modal-confirm').onclick = async () => {
+    overlay.remove();
+    clearActiveRoom();
+    await sb.rpc('close_room', { p_room_id: room.id });
+    handleRoomClosed();
+  };
+});
+
+/* ---------- Resume on load ---------- */
+(async function init(){
+  const urlParams = new URLSearchParams(location.search);
+  const prefillCode = urlParams.get('code');
+
+  const saved = localStorage.getItem('cloak_active_room');
+  if(!saved){
+    if(prefillCode){
+      showScreen('join');
+      $('join-code-input').value = prefillCode.toUpperCase();
+      $('join-name-input').focus();
+    } else {
+      showScreen('landing');
+    }
+    return;
+  }
+  showScreen('resuming');
+  try{
+    const { id } = JSON.parse(saved);
+    const { data, error } = await sb.rpc('resume_room', { p_room_id: id, p_session_id: sessionId });
+    if(error || !data){
+      clearActiveRoom();
+      resetToLanding();
+      return;
+    }
+    displayName = localStorage.getItem('cloak_name') || displayName;
+    await enterRoom(data, null);
+  }catch(e){
+    clearActiveRoom();
+    resetToLanding();
+  }
+})();
+</script>
+</body>
+</html>
